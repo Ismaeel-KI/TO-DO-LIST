@@ -1,12 +1,9 @@
-from asyncio import Task
-import select
-from traceback import print_exception
-from winreg import REG_DWORD
-from flask import Flask, redirect, render_template, request, jsonify
-from sqlalchemy import Boolean, Integer, String, null, select, Select
+from flask import Flask, render_template, request, jsonify
+from sqlalchemy import Boolean, Integer, String, select
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 
+# Create Flask App
 app = Flask(__name__)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///task.db'
@@ -14,19 +11,20 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///task.db'
 class Base(DeclarativeBase):
     pass
 
-db =SQLAlchemy(model_class=Base)
+db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
 
 class Tasks(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     task: Mapped[str] = mapped_column(String, nullable=False)
-    completed: Mapped[bool] = mapped_column(Boolean, nullable=True)
-
+    completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 with app.app_context():
     db.create_all()
 
+
+# Home Route
 @app.route('/')
 def home():
     tasks = db.session.execute(select(Tasks)).scalars().all()
@@ -34,15 +32,16 @@ def home():
     return render_template('index.html', tasks=tasks, last_id=last_id)
 
 
+# Add Task to database
 @app.route('/add', methods=['POST'])
 def add_task():
     json_data = request.get_json()
-    new_task = Tasks()
-    new_task.task = json_data['task']
+    new_task = Tasks(task=json_data['task'])
     db.session.add(new_task)
     db.session.commit()
     return jsonify({'success': True, 'task_id': new_task.id})
 
+# Toggles the checkbox
 @app.route('/toggle/<int:task_id>', methods=['POST'])
 def toggle(task_id):
     data = request.get_json()
@@ -51,6 +50,7 @@ def toggle(task_id):
     db.session.commit()
     return jsonify({'success': True})
 
+# Edit Task
 @app.route("/edit/<int:task_id>", methods=["POST"])
 def edit_task(task_id):
     data = request.get_json(silent=True) or {}
@@ -62,6 +62,7 @@ def edit_task(task_id):
     db.session.commit()
     return jsonify({"success": True, "task_id": task.id, "task": task.task})
 
+# Remove task from database
 @app.route('/remove_task/<int:taskId>', methods=['DELETE'])
 def remove_task(taskId):
     task = Tasks.query.get_or_404(taskId)
@@ -70,6 +71,6 @@ def remove_task(taskId):
     last_id = db.session.query(db.func.max(Tasks.id)).scalar() or 0
     return jsonify({'success': True, 'last_id': last_id})
 
-
+# Main
 if __name__ == '__main__':
-    app.run(debug=True, port=500)
+    app.run(debug=True)
